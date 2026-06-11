@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>记账管理 - 记账管家后台</title>
+  <link rel="stylesheet" href="../css/page/style.css">
+  <link rel="stylesheet" href="../css/page/admin-style.css">
+</head>
+<body>
+  <div class="admin-layout" id="adminLayout">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">💰</div>
+        <span class="logo-text">记账管家</span>
+        <span class="logo-sub">后台</span>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">管理菜单</div>
+          <a class="nav-item" href="index.html">
+            <span class="nav-icon">📊</span>仪表盘
+          </a>
+          <a class="nav-item" href="user-manage.html">
+            <span class="nav-icon">👥</span>用户管理
+          </a>
+          <a class="nav-item active" href="record-manage.html">
+            <span class="nav-icon">📋</span>记账管理
+          </a>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-text">© 2025 记账管家后台</div>
+      </div>
+    </aside>
+    <div class="admin-sidebar-overlay" id="adminSidebarOverlay"></div>
+
+    <!-- Main Area -->
+    <div class="admin-main-area">
+      <header class="admin-header">
+        <div class="header-left">
+          <button class="menu-toggle" id="adminMenuToggle" title="菜单">☰</button>
+          <span class="header-title">记账管理</span>
+        </div>
+        <div class="header-right">
+          <button class="theme-toggle" id="adminThemeToggle" title="切换主题">
+            <span id="themeIcon">🌙</span>
+          </button>
+          <div class="admin-user">
+            <div class="admin-avatar">A</div>
+            <span>管理员</span>
+          </div>
+          <button class="logout-btn" id="adminLogoutBtn" title="退出登录">
+            <span>🚪</span> 退出
+          </button>
+        </div>
+      </header>
+      <main class="admin-content" id="adminContent"></main>
+    </div>
+  </div>
+
+  <script src="../js/utils/storage.js"></script>
+  <script src="../js/utils/toast.js"></script>
+  <script src="../js/utils/format.js"></script>
+  <script src="../js/main.js"></script>
+  <script>
+    (function() {
+      // ========== 初始化 ==========
+      App.init(false);
+
+      // 检查管理员登录
+      const adminUser = Storage.get('adminUser');
+      if (!adminUser) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      // 加载主题
+      const isDark = Storage.get('darkMode', false);
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : '');
+      const themeIcon = document.getElementById('themeIcon');
+      if (themeIcon) themeIcon.textContent = isDark ? '☀️' : '🌙';
+
+      // ========== 布局事件绑定 ==========
+      const menuToggle = document.getElementById('adminMenuToggle');
+      const sidebar = document.getElementById('adminSidebar');
+      const overlay = document.getElementById('adminSidebarOverlay');
+      if (menuToggle && sidebar && overlay) {
+        menuToggle.addEventListener('click', () => {
+          sidebar.classList.toggle('open');
+          overlay.classList.toggle('show');
+        });
+        overlay.addEventListener('click', () => {
+          sidebar.classList.remove('open');
+          overlay.classList.remove('show');
+        });
+      }
+
+      const themeToggle = document.getElementById('adminThemeToggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          App.toggleTheme();
+          const nowDark = document.documentElement.getAttribute('data-theme') === 'dark';
+          if (themeIcon) themeIcon.textContent = nowDark ? '☀️' : '🌙';
+        });
+      }
+
+      const logoutBtn = document.getElementById('adminLogoutBtn');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (confirm('确定要退出后台管理吗？')) {
+            Storage.remove('adminUser');
+            Toast.success('已退出登录');
+            setTimeout(() => { window.location.href = 'login.html'; }, 300);
+          }
+        });
+      }
+
+      // ========== 数据与状态 ==========
+      const content = document.getElementById('adminContent');
+      let allRecords = [];
+      let filteredRecords = [];
+      let currentPage = 1;
+      const PAGE_SIZE = 10;
+
+      function loadData() {
+        const transactions = Storage.get('transactions', []);
+        const users = Storage.get('users', []);
+        // 为每条记录附加用户信息
+        allRecords = transactions.map(t => {
+          const user = users.find(u => u.id === t.userId);
+          return {
+            ...t,
+            username: user ? user.username : '未知用户'
+          };
+        });
+        allRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+        filteredRecords = [...allRecords];
+      }
+
+      function applyFilters() {
+        const typeFilter = document.getElementById('filterType')?.value || '';
+        const keyword = document.getElementById('searchInput')?.value?.trim().toLowerCase() || '';
+
+        filteredRecords = allRecords.filter(t => {
+          if (typeFilter && t.type !== typeFilter) return false;
+          if (keyword) {
+            const catName = App.getCategoryName(t.type, t.category).toLowerCase();
+            if (!t.username.toLowerCase().includes(keyword) &&
+                !catName.includes(keyword) &&
+                !(t.note && t.note.toLowerCase().includes(keyword))) return false;
+          }
+          return true;
+        });
+        currentPage = 1;
+      }
+
+      function renderPage() {
+        const totalPages = Math.ceil(filteredRecords.length / PAGE_SIZE) || 1;
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const pageData = filteredRecords.slice(start, start + PAGE_SIZE);
+
+        const totalIncome = filteredRecords.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+        const totalExpense = filteredRecords.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+        content.innerHTML = `
+          <div class="page-header">
+            <h1 class="page-title">📋 记账管理</h1>
+            <p class="page-desc">
+              共 ${filteredRecords.length} 条记录
+              | 收入 ${Format.money(totalIncome)}
+              | 支出 ${Format.money(totalExpense)}
+            </p>
+          </div>
+
+          <div class="card" style="margin-bottom:20px;">
+            <div class="admin-toolbar">
+              <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="form-input" id="searchInput" placeholder="搜索用户名、分类或备注...">
+              </div>
+              <select class="form-select" id="filterType">
+                <option value="">全部类型</option>
+                <option value="income">收入</option>
+                <option value="expense">支出</option>
+              </select>
+              <button class="btn btn-outline btn-sm" id="resetFilter">重置</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-responsive">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>用户</th>
+                    <th>类型</th>
+                    <th>分类</th>
+                    <th>金额</th>
+                    <th>日期</th>
+                    <th>备注</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${pageData.length === 0 ? `
+                    <tr><td colspan="7">
+                      <div class="admin-empty">
+                        <div class="empty-icon">📭</div>
+                        <div class="empty-text">暂无记账记录</div>
+                      </div>
+                    </td></tr>
+                  ` : pageData.map(t => {
+                    const catIcon = App.getCategoryIcon(t.type, t.category);
+                    const catName = App.getCategoryName(t.type, t.category);
+                    return `
+                      <tr>
+                        <td><strong>${t.username}</strong></td>
+                        <td><span class="badge badge-${t.type}">${t.type === 'income' ? '收入' : '支出'}</span></td>
+                        <td>${catIcon} ${catName}</td>
+                        <td class="col-amount ${t.type}">
+                          ${t.type === 'income' ? '+' : '-'}${Format.money(t.amount)}
+                        </td>
+                        <td>${Format.date(t.date)}</td>
+                        <td>${t.note || '-'}</td>
+                        <td>
+                          <div class="row-actions">
+                            <button class="btn btn-danger btn-sm delete-record-btn" data-id="${t.id}">删除</button>
+                          </div>
+                        </td>
+                      </tr>
+                    `;
+                  }).join('')}
+                </tbody>
+              </table>
+            </div>
+            ${totalPages > 1 ? `
+              <div class="admin-pagination">
+                <button class="page-btn" id="prevPage" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
+                ${Array.from({length: totalPages}, (_, i) => `
+                  <button class="page-btn ${i + 1 === currentPage ? 'active' : ''}" data-page="${i + 1}">${i + 1}</button>
+                `).join('')}
+                <button class="page-btn" id="nextPage" ${currentPage === totalPages ? 'disabled' : ''}>›</button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+
+        bindEvents();
+      }
+
+      function bindEvents() {
+        // 搜索
+        document.getElementById('searchInput')?.addEventListener('input', () => {
+          applyFilters();
+          renderPage();
+        });
+
+        // 类型筛选
+        document.getElementById('filterType')?.addEventListener('change', () => {
+          applyFilters();
+          renderPage();
+        });
+
+        // 重置
+        document.getElementById('resetFilter')?.addEventListener('click', () => {
+          document.getElementById('searchInput').value = '';
+          document.getElementById('filterType').value = '';
+          applyFilters();
+          renderPage();
+        });
+
+        // 分页
+        document.getElementById('prevPage')?.addEventListener('click', () => {
+          if (currentPage > 1) { currentPage--; renderPage(); }
+        });
+        document.getElementById('nextPage')?.addEventListener('click', () => {
+          const totalPages = Math.ceil(filteredRecords.length / PAGE_SIZE) || 1;
+          if (currentPage < totalPages) { currentPage++; renderPage(); }
+        });
+        document.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+          btn.addEventListener('click', () => { currentPage = parseInt(btn.dataset.page); renderPage(); });
+        });
+
+        // 删除记录
+        document.querySelectorAll('.delete-record-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = parseInt(btn.dataset.id);
+            if (confirm('确定要删除这条记账记录吗？\n\n此操作不可恢复。')) {
+              const transactions = Storage.get('transactions', []);
+              Storage.set('transactions', transactions.filter(t => t.id !== id));
+              Toast.success('记录已删除');
+              loadData();
+              applyFilters();
+              renderPage();
+            }
+          });
+        });
+      }
+
+      // ========== 初始化渲染 ==========
+      loadData();
+      renderPage();
+      document.title = '记账管理 - 记账管家后台';
+    })();
+  </script>
+</body>
+</html>

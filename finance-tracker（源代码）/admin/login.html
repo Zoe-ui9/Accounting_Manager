@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>后台登录 - 记账管家</title>
+  <link rel="stylesheet" href="../css/page/style.css">
+  <style>
+    .admin-login-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+    }
+
+    .admin-login-card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--bg-card);
+      border-radius: var(--radius-xl);
+      box-shadow: var(--shadow-lg);
+      padding: 40px 36px;
+    }
+
+    .admin-login-logo {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .admin-login-logo .logo-icon {
+      width: 56px;
+      height: 56px;
+      background: var(--primary);
+      border-radius: 50%;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      font-size: 28px;
+      margin-bottom: 12px;
+    }
+
+    .admin-login-logo h2 {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--text-primary);
+    }
+
+    .admin-login-logo .logo-sub {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-top: 4px;
+      display: inline-block;
+      background: var(--primary-light);
+      color: var(--primary);
+      padding: 2px 10px;
+      border-radius: 20px;
+      font-weight: 500;
+    }
+
+    .admin-login-card .form-input {
+      padding: 12px 14px;
+    }
+
+    .admin-login-card .btn {
+      width: 100%;
+      padding: 12px;
+      font-size: 15px;
+      margin-top: 8px;
+    }
+
+    .admin-login-back {
+      text-align: center;
+      margin-top: 20px;
+      font-size: 14px;
+      color: var(--text-secondary);
+    }
+
+    .admin-login-back a {
+      color: var(--primary);
+      font-weight: 500;
+    }
+
+    .admin-login-hint {
+      margin-top: 12px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    [data-theme='dark'] .admin-login-page {
+      background: linear-gradient(135deg, #020617 0%, #0f172a 50%, #020617 100%);
+    }
+  </style>
+</head>
+<body>
+  <div class="admin-login-page">
+    <div class="admin-login-card">
+      <div class="admin-login-logo">
+        <div class="logo-icon">🔐</div>
+        <h2>记账管家后台</h2>
+        <div class="logo-sub">管理系统</div>
+      </div>
+      <form id="adminLoginForm" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="username">管理员账号</label>
+          <input type="text" id="username" class="form-input" placeholder="请输入管理员账号" required autocomplete="username">
+          <div class="form-error" id="usernameError"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">密码</label>
+          <input type="password" id="password" class="form-input" placeholder="请输入密码" required autocomplete="current-password">
+          <div class="form-error" id="passwordError"></div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg">登 录</button>
+      </form>
+      <div class="admin-login-back">
+        <a href="../index.html">← 返回前台首页</a>
+      </div>
+      <div class="admin-login-hint">
+        演示账号：admin / admin123
+      </div>
+    </div>
+  </div>
+
+  <script src="../js/utils/storage.js"></script>
+  <script src="../js/utils/toast.js"></script>
+  <script src="../js/main.js"></script>
+  <script>
+    (function() {
+      // 加载主题
+      const dark = Storage.get('darkMode', false);
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : '');
+
+      const form = document.getElementById('adminLoginForm');
+
+      form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        let valid = true;
+
+        const username = document.getElementById('username').value.trim();
+        const password = document.getElementById('password').value;
+
+        document.getElementById('usernameError').textContent = '';
+        document.getElementById('passwordError').textContent = '';
+        document.getElementById('username').classList.remove('error');
+        document.getElementById('password').classList.remove('error');
+
+        if (!username) {
+          document.getElementById('usernameError').textContent = '请输入管理员账号';
+          document.getElementById('username').classList.add('error');
+          valid = false;
+        }
+
+        if (!password) {
+          document.getElementById('passwordError').textContent = '请输入密码';
+          document.getElementById('password').classList.add('error');
+          valid = false;
+        }
+
+        if (!valid) return;
+
+        // 管理员账号验证（写死）
+        if (username === 'admin' && password === 'admin123') {
+          Storage.set('adminUser', { username: 'admin', role: 'admin', loginAt: new Date().toISOString() });
+          Toast.success('登录成功，欢迎回来');
+          setTimeout(() => { window.location.href = 'index.html'; }, 500);
+        } else {
+          Toast.error('管理员账号或密码错误');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

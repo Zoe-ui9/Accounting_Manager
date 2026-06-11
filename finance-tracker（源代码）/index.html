@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>仪表盘 - 记账管家</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <div class="main-area" id="mainArea"></div>
+  </div>
+
+  <script src="js/utils/storage.js"></script>
+  <script src="js/utils/toast.js"></script>
+  <script src="js/utils/format.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    App.init(true);
+    App.generateLayout('仪表盘', 'index');
+
+    const content = document.getElementById('mainContent');
+    const user = App.getUser();
+    const transactions = Storage.get('transactions', []).filter(t => t.userId === user.id);
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    const monthTransactions = transactions.filter(t => {
+      const d = new Date(t.date);
+      return d.getFullYear() === currentYear && d.getMonth() + 1 === currentMonth;
+    });
+
+    let totalIncome = 0, totalExpense = 0;
+    monthTransactions.forEach(t => {
+      if (t.type === 'income') totalIncome += t.amount;
+      else totalExpense += t.amount;
+    });
+    const balance = totalIncome - totalExpense;
+
+    const recent = [...transactions].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
+
+    content.innerHTML = `
+      <div class="page-header">
+        <h1 class="page-title">👋 你好，${user.username}</h1>
+        <p class="page-desc">${Format.monthLabel(currentYear, currentMonth)} 收支概览</p>
+      </div>
+
+      <div class="stat-grid">
+        <div class="stat-card income">
+          <div class="stat-label">本月收入</div>
+          <div class="stat-value">${Format.money(totalIncome)}</div>
+          <div class="stat-sub">${monthTransactions.filter(t=>t.type==='income').length} 笔记录</div>
+        </div>
+        <div class="stat-card expense">
+          <div class="stat-label">本月支出</div>
+          <div class="stat-value">${Format.money(totalExpense)}</div>
+          <div class="stat-sub">${monthTransactions.filter(t=>t.type==='expense').length} 笔记录</div>
+        </div>
+        <div class="stat-card balance">
+          <div class="stat-label">本月结余</div>
+          <div class="stat-value">${Format.money(balance)}</div>
+          <div class="stat-sub">${balance >= 0 ? '👍 收支平衡' : '⚠ 超支提醒'}</div>
+        </div>
+      </div>
+
+      <div class="quick-actions">
+        <a class="quick-action qa-income" href="add.html?type=income">
+          <div class="qa-icon">💵</div>
+          <div class="qa-text">记收入</div>
+        </a>
+        <a class="quick-action qa-expense" href="add.html?type=expense">
+          <div class="qa-icon">💸</div>
+          <div class="qa-text">记支出</div>
+        </a>
+        <a class="quick-action qa-chart" href="statistics.html">
+          <div class="qa-icon">📊</div>
+          <div class="qa-text">看统计</div>
+        </a>
+        <a class="quick-action qa-budget" href="budget.html">
+          <div class="qa-icon">🎯</div>
+          <div class="qa-text">设预算</div>
+        </a>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">📋 近期记录</span>
+          <a href="list.html" class="btn btn-outline btn-sm">查看全部 →</a>
+        </div>
+        <div class="recent-list">
+          ${recent.length === 0 ? `
+            <div class="empty-state">
+              <div class="empty-icon">📝</div>
+              <div class="empty-text">还没有记账记录</div>
+              <a href="add.html" class="btn btn-primary btn-sm">记一笔</a>
+            </div>
+          ` : recent.map(t => {
+            const catIcon = App.getCategoryIcon(t.type, t.category);
+            const catName = App.getCategoryName(t.type, t.category);
+            const catColor = t.type === 'income' ? '#dcfce7' : '#fef2f2';
+            const textColor = t.type === 'income' ? '#16a34a' : '#dc2626';
+            return `
+              <div class="recent-item">
+                <div class="recent-left">
+                  <div class="recent-category-icon" style="background:${catColor};color:${textColor}">${catIcon}</div>
+                  <div class="recent-info">
+                    <div class="recent-cat">${catName}</div>
+                    <div class="recent-date">${Format.date(t.date)}</div>
+                  </div>
+                </div>
+                <div class="recent-right">
+                  <div class="recent-amount ${t.type}">${t.type === 'income' ? '+' : '-'}${Format.money(t.amount)}</div>
+                  ${t.note ? `<div class="recent-note">${t.note}</div>` : ''}
+                </div>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+
+    document.title = '仪表盘 - 记账管家';
+  </script>
+</body>
+</html>

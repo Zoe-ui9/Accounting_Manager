@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>预算管理 - 记账管家</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <div class="main-area" id="mainArea"></div>
+  </div>
+
+  <script src="js/utils/storage.js"></script>
+  <script src="js/utils/toast.js"></script>
+  <script src="js/utils/format.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    App.init(true);
+    App.generateLayout('预算管理', 'budget');
+
+    const content = document.getElementById('mainContent');
+    const user = App.getUser();
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1;
+    const currentYear = now.getFullYear();
+
+    function getBudgets() {
+      const all = Storage.get('budgets', {});
+      return all[user.id] || {};
+    }
+
+    function saveBudgets(budgets) {
+      const all = Storage.get('budgets', {});
+      all[user.id] = budgets;
+      Storage.set('budgets', all);
+    }
+
+    function getMonthExpenses() {
+      const transactions = Storage.get('transactions', []).filter(t => t.userId === user.id);
+      return transactions.filter(t => {
+        const d = new Date(t.date);
+        return d.getFullYear() === currentYear && d.getMonth() + 1 === currentMonth && t.type === 'expense';
+      });
+    }
+
+    function render() {
+      const budgets = getBudgets();
+      const monthExpenses = getMonthExpenses();
+      const categories = App.getCategories('expense');
+
+      const spentByCat = {};
+      monthExpenses.forEach(t => {
+        spentByCat[t.category] = (spentByCat[t.category] || 0) + t.amount;
+      });
+
+      let totalBudget = 0;
+      let totalSpent = 0;
+      const budgetItems = categories.map(cat => {
+        const limit = budgets[cat.id] || 0;
+        const spent = spentByCat[cat.id] || 0;
+        totalBudget += limit;
+        totalSpent += spent;
+        const percent = limit > 0 ? Math.round((spent / limit) * 100) : 0;
+        let status = 'safe';
+        if (percent >= 100) status = 'danger';
+        else if (percent >= 80) status = 'warning';
+        return { ...cat, limit, spent, percent, status };
+      });
+
+      content.innerHTML = `
+        <div class="page-header flex-between">
+          <div>
+            <h1 class="page-title">🎯 预算管理</h1>
+            <p class="page-desc">${Format.monthLabel(currentYear, currentMonth)} | 总预算 ${Format.money(totalBudget)} | 已支出 ${Format.money(totalSpent)}</p>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card">
+            <div class="stat-label">本月总预算</div>
+            <div class="stat-value">${Format.money(totalBudget)}</div>
+          </div>
+          <div class="stat-card expense">
+            <div class="stat-label">本月已支出</div>
+            <div class="stat-value">${Format.money(totalSpent)}</div>
+          </div>
+          <div class="stat-card ${totalBudget - totalSpent < 0 ? 'expense' : 'balance'}">
+            <div class="stat-label">本月剩余</div>
+            <div class="stat-value">${Format.money(Math.max(0, totalBudget - totalSpent))}</div>
+            <div class="stat-sub">${totalBudget - totalSpent < 0 ? '⚠ 已超出预算' : '👍 预算内'}</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">📋 分类预算设置</span>
+          </div>
+          <div class="budget-list" id="budgetList">
+            ${budgetItems.map(item => `
+              <div class="budget-item">
+                <div class="budget-icon" style="background:${item.status === 'danger' ? '#fef2f2' : item.status === 'warning' ? '#fffbeb' : '#dcfce7'};color:${item.color};">
+                  ${item.icon}
+                </div>
+                <div class="budget-info">
+                  <div class="budget-cat">${item.name}</div>
+                  <div class="budget-status">
+                    ${item.limit > 0 ? `已花 ${Format.money(item.spent)} / 预算 ${Format.money(item.limit)}` : '未设置预算'}
+                    ${item.status === 'danger' ? '<span class="over-budget-badge">超支</span>' : ''}
+                    ${item.status === 'warning' ? '<span style="color:#f59e0b;font-size:12px;margin-left:4px;">即将超支</span>' : ''}
+                  </div>
+                </div>
+                ${item.limit > 0 ? `
+                  <div class="budget-progress">
+                    <div class="progress-bar">
+                      <div class="progress-fill ${item.status}" style="width:${Math.min(100, item.percent)}%"></div>
+                    </div>
+                    <div class="progress-text">${item.percent}%</div>
+                  </div>
+                ` : '<div style="width:140px;"></div>'}
+                <div class="budget-amount">
+                  <div class="ba-value">${item.limit > 0 ? Format.money(item.limit) : '-'}</div>
+                  ${item.limit > 0 ? `<div class="ba-limit">月预算</div>` : ''}
+                </div>
+                <button class="btn btn-outline btn-sm set-budget-btn" data-id="${item.id}" data-name="${item.name}" data-icon="${item.icon}" data-current="${item.limit}">
+                  ${item.limit > 0 ? '修改' : '设置'}
+                </button>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+
+      bindEvents(budgets);
+    }
+
+    function bindEvents(budgets) {
+      document.querySelectorAll('.set-budget-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const catId = btn.dataset.id;
+          const catName = btn.dataset.name;
+          const catIcon = btn.dataset.icon;
+          const current = parseFloat(btn.dataset.current) || 0;
+
+          showBudgetModal(catId, catName, catIcon, current, (newLimit) => {
+            budgets[catId] = newLimit;
+            saveBudgets(budgets);
+            Toast.success(`${catName}预算已更新为 ${Format.money(newLimit)}`);
+            render();
+          });
+        });
+      });
+    }
+
+    function showBudgetModal(catId, catName, catIcon, current, onSave) {
+      const overlay = document.createElement('div');
+      overlay.className = 'modal-overlay';
+      overlay.innerHTML = `
+        <div class="modal">
+          <div class="modal-title">${catIcon} 设置 ${catName} 月预算</div>
+          <div class="form-group">
+            <label class="form-label">预算金额（元）</label>
+            <input type="number" class="form-input" id="budgetAmount" value="${current || ''}" placeholder="输入月预算金额，0表示不限制" step="0.01" min="0">
+          </div>
+          <div style="display:flex;gap:8px;margin-top:16px;">
+            <button class="btn btn-outline" id="cancelBudget" style="flex:1;">取消</button>
+            <button class="btn btn-primary" id="saveBudget" style="flex:1;">保存</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      const close = () => overlay.remove();
+      document.getElementById('cancelBudget').addEventListener('click', close);
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+      document.getElementById('saveBudget').addEventListener('click', () => {
+        const amount = parseFloat(document.getElementById('budgetAmount').value) || 0;
+        onSave(Math.max(0, amount));
+        close();
+      });
+    }
+
+    render();
+    document.title = '预算管理 - 记账管家';
+  </script>
+</body>
+</html>

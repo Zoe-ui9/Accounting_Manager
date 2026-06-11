@@ -1,0 +1,28 @@
+{
+  "income": [
+    { "id": "salary", "name": "工资", "icon": "💰", "color": "#22c55e" },
+    { "id": "bonus", "name": "奖金", "icon": "🧧", "color": "#16a34a" },
+    { "id": "investment", "name": "投资收益", "icon": "📈", "color": "#15803d" },
+    { "id": "parttime", "name": "兼职", "icon": "💼", "color": "#4ade80" },
+    { "id": "gift", "name": "礼金", "icon": "🎁", "color": "#86efac" },
+    { "id": "refund", "name": "退款", "icon": "↩️", "color": "#6ee7b7" },
+    { "id": "other_income", "name": "其他收入", "icon": "💵", "color": "#bbf7d0" }
+  ],
+  "expense": [
+    { "id": "food", "name": "餐饮", "icon": "🍜", "color": "#ef4444" },
+    { "id": "transport", "name": "交通", "icon": "🚌", "color": "#f97316" },
+    { "id": "shopping", "name": "购物", "icon": "🛒", "color": "#f59e0b" },
+    { "id": "housing", "name": "房租", "icon": "🏠", "color": "#e11d48" },
+    { "id": "utilities", "name": "水电", "icon": "💡", "color": "#dc2626" },
+    { "id": "entertainment", "name": "娱乐", "icon": "🎮", "color": "#a855f7" },
+    { "id": "education", "name": "教育", "icon": "📚", "color": "#6366f1" },
+    { "id": "medical", "name": "医疗", "icon": "🏥", "color": "#ec4899" },
+    { "id": "communication", "name": "通讯", "icon": "📱", "color": "#14b8a6" },
+    { "id": "beauty", "name": "美容", "icon": "💄", "color": "#d946ef" },
+    { "id": "social", "name": "社交", "icon": "🎉", "color": "#f43f5e" },
+    { "id": "daily", "name": "日用", "icon": "🧴", "color": "#eab308" },
+    { "id": "travel", "name": "旅行", "icon": "✈️", "color": "#06b6d4" },
+    { "id": "pets", "name": "宠物", "icon": "🐱", "color": "#8b5cf6" },
+    { "id": "other_expense", "name": "其他支出", "icon": "💸", "color": "#6b7280" }
+  ]
+}

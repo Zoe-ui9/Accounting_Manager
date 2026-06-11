@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>后台仪表盘 - 记账管家</title>
+  <link rel="stylesheet" href="../css/page/style.css">
+  <link rel="stylesheet" href="../css/page/admin-style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+  <div class="admin-layout" id="adminLayout">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">💰</div>
+        <span class="logo-text">记账管家</span>
+        <span class="logo-sub">后台</span>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">管理菜单</div>
+          <a class="nav-item active" href="index.html">
+            <span class="nav-icon">📊</span>仪表盘
+          </a>
+          <a class="nav-item" href="user-manage.html">
+            <span class="nav-icon">👥</span>用户管理
+          </a>
+          <a class="nav-item" href="record-manage.html">
+            <span class="nav-icon">📋</span>记账管理
+          </a>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-text">© 2025 记账管家后台</div>
+      </div>
+    </aside>
+    <div class="admin-sidebar-overlay" id="adminSidebarOverlay"></div>
+
+    <!-- Main Area -->
+    <div class="admin-main-area">
+      <header class="admin-header">
+        <div class="header-left">
+          <button class="menu-toggle" id="adminMenuToggle" title="菜单">☰</button>
+          <span class="header-title">后台仪表盘</span>
+        </div>
+        <div class="header-right">
+          <button class="theme-toggle" id="adminThemeToggle" title="切换主题">
+            <span id="themeIcon">🌙</span>
+          </button>
+          <div class="admin-user">
+            <div class="admin-avatar">A</div>
+            <span>管理员</span>
+          </div>
+          <button class="logout-btn" id="adminLogoutBtn" title="退出登录">
+            <span>🚪</span> 退出
+          </button>
+        </div>
+      </header>
+      <main class="admin-content" id="adminContent"></main>
+    </div>
+  </div>
+
+  <script src="../js/utils/storage.js"></script>
+  <script src="../js/utils/toast.js"></script>
+  <script src="../js/utils/format.js"></script>
+  <script src="../js/main.js"></script>
+  <script>
+    (function() {
+      // ========== 初始化 ==========
+      App.init(false);
+
+      // 检查管理员登录
+      const adminUser = Storage.get('adminUser');
+      if (!adminUser) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      // 加载主题
+      const isDark = Storage.get('darkMode', false);
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : '');
+      const themeIcon = document.getElementById('themeIcon');
+      if (themeIcon) themeIcon.textContent = isDark ? '☀️' : '🌙';
+
+      // ========== 布局事件绑定 ==========
+      const menuToggle = document.getElementById('adminMenuToggle');
+      const sidebar = document.getElementById('adminSidebar');
+      const overlay = document.getElementById('adminSidebarOverlay');
+      if (menuToggle && sidebar && overlay) {
+        menuToggle.addEventListener('click', () => {
+          sidebar.classList.toggle('open');
+          overlay.classList.toggle('show');
+        });
+        overlay.addEventListener('click', () => {
+          sidebar.classList.remove('open');
+          overlay.classList.remove('show');
+        });
+      }
+
+      const themeToggle = document.getElementById('adminThemeToggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          App.toggleTheme();
+          const nowDark = document.documentElement.getAttribute('data-theme') === 'dark';
+          if (themeIcon) themeIcon.textContent = nowDark ? '☀️' : '🌙';
+          // 刷新图表颜色
+          renderChart();
+        });
+      }
+
+      const logoutBtn = document.getElementById('adminLogoutBtn');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (confirm('确定要退出后台管理吗？')) {
+            Storage.remove('adminUser');
+            Toast.success('已退出登录');
+            setTimeout(() => { window.location.href = 'login.html'; }, 300);
+          }
+        });
+      }
+
+      // ========== 数据加载 ==========
+      function loadData() {
+        const users = Storage.get('users', []);
+        const transactions = Storage.get('transactions', []);
+        const now = new Date();
+        const currentYear = now.getFullYear();
+        const currentMonth = now.getMonth() + 1;
+
+        // 统计
+        const totalUsers = users.length;
+        const totalRecords = transactions.length;
+
+        // 本月统计
+        const monthTransactions = transactions.filter(t => {
+          const d = new Date(t.date);
+          return d.getFullYear() === currentYear && d.getMonth() + 1 === currentMonth;
+        });
+
+        let monthIncome = 0, monthExpense = 0;
+        monthTransactions.forEach(t => {
+          if (t.type === 'income') monthIncome += t.amount;
+          else monthExpense += t.amount;
+        });
+
+        // 最近6个月数据
+        const monthLabels = [];
+        const incomeData = [];
+        const expenseData = [];
+        for (let i = 5; i >= 0; i--) {
+          const d = new Date(currentYear, currentMonth - 1 - i, 1);
+          const y = d.getFullYear();
+          const m = d.getMonth() + 1;
+          monthLabels.push(Format.monthLabel(y, m));
+          const monthTrans = transactions.filter(t => {
+            const td = new Date(t.date);
+            return td.getFullYear() === y && td.getMonth() + 1 === m;
+          });
+          incomeData.push(monthTrans.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0));
+          expenseData.push(monthTrans.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0));
+        }
+
+        // 最近5条记录
+        const recentRecords = [...transactions]
+          .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date))
+          .slice(0, 5);
+
+        return {
+          totalUsers,
+          totalRecords,
+          monthIncome,
+          monthExpense,
+          monthLabels,
+          incomeData,
+          expenseData,
+          recentRecords,
+          users
+        };
+      }
+
+      // ========== 渲染页面 ==========
+      const content = document.getElementById('adminContent');
+      const data = loadData();
+
+      content.innerHTML = `
+        <div class="page-header">
+          <h1 class="page-title">📊 后台仪表盘</h1>
+          <p class="page-desc">全平台数据概览</p>
+        </div>
+
+        <div class="admin-stat-grid">
+          <div class="admin-stat-card">
+            <div class="stat-icon icon-users">👥</div>
+            <div class="stat-info">
+              <div class="stat-label">注册用户</div>
+              <div class="stat-value">${data.totalUsers}</div>
+            </div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="stat-icon icon-records">📋</div>
+            <div class="stat-info">
+              <div class="stat-label">记账记录</div>
+              <div class="stat-value">${data.totalRecords}</div>
+            </div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="stat-icon icon-income">💵</div>
+            <div class="stat-info">
+              <div class="stat-label">本月总收入</div>
+              <div class="stat-value">${Format.money(data.monthIncome)}</div>
+            </div>
+          </div>
+          <div class="admin-stat-card">
+            <div class="stat-icon icon-expense">💸</div>
+            <div class="stat-info">
+              <div class="stat-label">本月总支出</div>
+              <div class="stat-value">${Format.money(data.monthExpense)}</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="admin-card-grid">
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">📈 近6个月收支对比</span>
+            </div>
+            <div id="chartContainer" class="admin-chart-container"></div>
+          </div>
+          <div class="card">
+            <div class="card-header">
+              <span class="card-title">🕐 最新记账记录</span>
+              <a href="record-manage.html" class="btn btn-outline btn-sm">查看全部</a>
+            </div>
+            <div class="admin-recent-list">
+              ${data.recentRecords.length === 0 ? `
+                <div class="admin-empty">
+                  <div class="empty-icon">📭</div>
+                  <div class="empty-text">暂无记账记录</div>
+                </div>
+              ` : data.recentRecords.map(t => {
+                const user = data.users.find(u => u.id === t.userId);
+                const userName = user ? user.username : '未知用户';
+                const catIcon = App.getCategoryIcon(t.type, t.category);
+                const catName = App.getCategoryName(t.type, t.category);
+                const iconBg = t.type === 'income' ? '#dcfce7' : '#fef2f2';
+                const iconColor = t.type === 'income' ? '#16a34a' : '#dc2626';
+                return `
+                  <div class="admin-recent-item">
+                    <div class="admin-recent-left">
+                      <div class="admin-recent-icon" style="background:${iconBg};color:${iconColor}">${catIcon}</div>
+                      <div class="admin-recent-info">
+                        <div class="recent-title">${catName} · ${userName}</div>
+                        <div class="recent-meta">${Format.date(t.date)}${t.note ? ' · ' + t.note : ''}</div>
+                      </div>
+                    </div>
+                    <div class="admin-recent-right">
+                      <div class="admin-recent-amount ${t.type}">${t.type === 'income' ? '+' : '-'}${Format.money(t.amount)}</div>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      `;
+
+      // ========== 渲染 ECharts 图表 ==========
+      function renderChart() {
+        const chartDom = document.getElementById('chartContainer');
+        if (!chartDom) return;
+        const myChart = echarts.init(chartDom);
+        const isDarkMode = document.documentElement.getAttribute('data-theme') === 'dark';
+        const textColor = isDarkMode ? '#94a3b8' : '#6b7280';
+        const axisColor = isDarkMode ? '#334155' : '#e5e7eb';
+        const tooltipBg = isDarkMode ? '#1e293b' : '#ffffff';
+        const tooltipBorder = isDarkMode ? '#334155' : '#e5e7eb';
+
+        const option = {
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            backgroundColor: tooltipBg,
+            borderColor: tooltipBorder,
+            textStyle: { color: isDarkMode ? '#f1f5f9' : '#1f2937' }
+          },
+          legend: {
+            data: ['收入', '支出'],
+            textStyle: { color: textColor },
+            bottom: 0
+          },
+          grid: {
+            left: '3%', right: '4%', bottom: '15%', top: '10%', containLabel: true
+          },
+          xAxis: {
+            type: 'category',
+            data: data.monthLabels,
+            axisLine: { lineStyle: { color: axisColor } },
+            axisLabel: { color: textColor }
+          },
+          yAxis: {
+            type: 'value',
+            axisLine: { show: false },
+            splitLine: { lineStyle: { color: axisColor, type: 'dashed' } },
+            axisLabel: {
+              color: textColor,
+              formatter: value => '¥' + (value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value)
+            }
+          },
+          series: [
+            {
+              name: '收入',
+              type: 'bar',
+              data: data.incomeData,
+              itemStyle: { color: '#22c55e', borderRadius: [4, 4, 0, 0] },
+              barWidth: '30%'
+            },
+            {
+              name: '支出',
+              type: 'bar',
+              data: data.expenseData,
+              itemStyle: { color: '#ef4444', borderRadius: [4, 4, 0, 0] },
+              barWidth: '30%'
+            }
+          ]
+        };
+
+        myChart.setOption(option);
+
+        // 响应式
+        window.addEventListener('resize', () => myChart.resize());
+      }
+
+      renderChart();
+
+      document.title = '后台仪表盘 - 记账管家';
+    })();
+  </script>
+</body>
+</html>

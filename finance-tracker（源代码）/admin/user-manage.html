@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>用户管理 - 记账管家后台</title>
+  <link rel="stylesheet" href="../css/page/style.css">
+  <link rel="stylesheet" href="../css/page/admin-style.css">
+</head>
+<body>
+  <div class="admin-layout" id="adminLayout">
+    <!-- Sidebar -->
+    <aside class="admin-sidebar" id="adminSidebar">
+      <div class="sidebar-logo">
+        <div class="logo-icon">💰</div>
+        <span class="logo-text">记账管家</span>
+        <span class="logo-sub">后台</span>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section">
+          <div class="nav-section-title">管理菜单</div>
+          <a class="nav-item" href="index.html">
+            <span class="nav-icon">📊</span>仪表盘
+          </a>
+          <a class="nav-item active" href="user-manage.html">
+            <span class="nav-icon">👥</span>用户管理
+          </a>
+          <a class="nav-item" href="record-manage.html">
+            <span class="nav-icon">📋</span>记账管理
+          </a>
+        </div>
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-footer-text">© 2025 记账管家后台</div>
+      </div>
+    </aside>
+    <div class="admin-sidebar-overlay" id="adminSidebarOverlay"></div>
+
+    <!-- Main Area -->
+    <div class="admin-main-area">
+      <header class="admin-header">
+        <div class="header-left">
+          <button class="menu-toggle" id="adminMenuToggle" title="菜单">☰</button>
+          <span class="header-title">用户管理</span>
+        </div>
+        <div class="header-right">
+          <button class="theme-toggle" id="adminThemeToggle" title="切换主题">
+            <span id="themeIcon">🌙</span>
+          </button>
+          <div class="admin-user">
+            <div class="admin-avatar">A</div>
+            <span>管理员</span>
+          </div>
+          <button class="logout-btn" id="adminLogoutBtn" title="退出登录">
+            <span>🚪</span> 退出
+          </button>
+        </div>
+      </header>
+      <main class="admin-content" id="adminContent"></main>
+    </div>
+  </div>
+
+  <script src="../js/utils/storage.js"></script>
+  <script src="../js/utils/toast.js"></script>
+  <script src="../js/utils/format.js"></script>
+  <script src="../js/main.js"></script>
+  <script>
+    (function() {
+      // ========== 初始化 ==========
+      App.init(false);
+
+      // 检查管理员登录
+      const adminUser = Storage.get('adminUser');
+      if (!adminUser) {
+        window.location.href = 'login.html';
+        return;
+      }
+
+      // 加载主题
+      const isDark = Storage.get('darkMode', false);
+      document.documentElement.setAttribute('data-theme', isDark ? 'dark' : '');
+      const themeIcon = document.getElementById('themeIcon');
+      if (themeIcon) themeIcon.textContent = isDark ? '☀️' : '🌙';
+
+      // ========== 布局事件绑定 ==========
+      const menuToggle = document.getElementById('adminMenuToggle');
+      const sidebar = document.getElementById('adminSidebar');
+      const overlay = document.getElementById('adminSidebarOverlay');
+      if (menuToggle && sidebar && overlay) {
+        menuToggle.addEventListener('click', () => {
+          sidebar.classList.toggle('open');
+          overlay.classList.toggle('show');
+        });
+        overlay.addEventListener('click', () => {
+          sidebar.classList.remove('open');
+          overlay.classList.remove('show');
+        });
+      }
+
+      const themeToggle = document.getElementById('adminThemeToggle');
+      if (themeToggle) {
+        themeToggle.addEventListener('click', () => {
+          App.toggleTheme();
+          const nowDark = document.documentElement.getAttribute('data-theme') === 'dark';
+          if (themeIcon) themeIcon.textContent = nowDark ? '☀️' : '🌙';
+        });
+      }
+
+      const logoutBtn = document.getElementById('adminLogoutBtn');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          if (confirm('确定要退出后台管理吗？')) {
+            Storage.remove('adminUser');
+            Toast.success('已退出登录');
+            setTimeout(() => { window.location.href = 'login.html'; }, 300);
+          }
+        });
+      }
+
+      // ========== 数据与状态 ==========
+      const content = document.getElementById('adminContent');
+      let allUsers = [];
+      let filteredUsers = [];
+      let currentPage = 1;
+      const PAGE_SIZE = 10;
+
+      function loadData() {
+        allUsers = Storage.get('users', []);
+        // 为每个用户计算记账记录数
+        const transactions = Storage.get('transactions', []);
+        allUsers.forEach(u => {
+          u.recordCount = transactions.filter(t => t.userId === u.id).length;
+        });
+        allUsers.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        filteredUsers = [...allUsers];
+      }
+
+      function applyFilters() {
+        const keyword = document.getElementById('searchInput')?.value?.trim().toLowerCase() || '';
+        filteredUsers = allUsers.filter(u => {
+          if (keyword) {
+            if (!u.username.toLowerCase().includes(keyword) &&
+                !(u.phone && u.phone.includes(keyword))) return false;
+          }
+          return true;
+        });
+        currentPage = 1;
+      }
+
+      function renderPage() {
+        const totalPages = Math.ceil(filteredUsers.length / PAGE_SIZE) || 1;
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const pageData = filteredUsers.slice(start, start + PAGE_SIZE);
+
+        content.innerHTML = `
+          <div class="page-header">
+            <h1 class="page-title">👥 用户管理</h1>
+            <p class="page-desc">共 ${allUsers.length} 位注册用户${filteredUsers.length !== allUsers.length ? '，筛选后 ' + filteredUsers.length + ' 位' : ''}</p>
+          </div>
+
+          <div class="card" style="margin-bottom:20px;">
+            <div class="admin-toolbar">
+              <div class="search-box">
+                <span class="search-icon">🔍</span>
+                <input type="text" class="form-input" id="searchInput" placeholder="搜索用户名或手机号...">
+              </div>
+              <button class="btn btn-outline btn-sm" id="resetFilter">重置</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-responsive">
+              <table class="admin-table">
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>用户名</th>
+                    <th>手机号</th>
+                    <th>注册时间</th>
+                    <th>记账记录数</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${pageData.length === 0 ? `
+                    <tr><td colspan="6">
+                      <div class="admin-empty">
+                        <div class="empty-icon">👤</div>
+                        <div class="empty-text">暂无用户数据</div>
+                      </div>
+                    </td></tr>
+                  ` : pageData.map(u => `
+                    <tr>
+                      <td>${u.id}</td>
+                      <td><strong>${u.username}</strong></td>
+                      <td>${u.phone || '-'}</td>
+                      <td>${Format.date(u.createdAt)}</td>
+                      <td>${u.recordCount} 笔</td>
+                      <td>
+                        <div class="row-actions">
+                          <button class="btn btn-danger btn-sm delete-user-btn" data-id="${u.id}" data-name="${u.username}">删除</button>
+                        </div>
+                      </td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            </div>
+            ${totalPages > 1 ? `
+              <div class="admin-pagination">
+                <button class="page-btn" id="prevPage" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
+                ${Array.from({length: totalPages}, (_, i) => `
+                  <button class="page-btn ${i + 1 === currentPage ? 'active' : ''}" data-page="${i + 1}">${i + 1}</button>
+                `).join('')}
+                <button class="page-btn" id="nextPage" ${currentPage === totalPages ? 'disabled' : ''}>›</button>
+              </div>
+            ` : ''}
+          </div>
+        `;
+
+        bindEvents();
+      }
+
+      function bindEvents() {
+        // 搜索
+        document.getElementById('searchInput')?.addEventListener('input', () => {
+          applyFilters();
+          renderPage();
+        });
+
+        // 重置
+        document.getElementById('resetFilter')?.addEventListener('click', () => {
+          document.getElementById('searchInput').value = '';
+          applyFilters();
+          renderPage();
+        });
+
+        // 分页
+        document.getElementById('prevPage')?.addEventListener('click', () => {
+          if (currentPage > 1) { currentPage--; renderPage(); }
+        });
+        document.getElementById('nextPage')?.addEventListener('click', () => {
+          const totalPages = Math.ceil(filteredUsers.length / PAGE_SIZE) || 1;
+          if (currentPage < totalPages) { currentPage++; renderPage(); }
+        });
+        document.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+          btn.addEventListener('click', () => { currentPage = parseInt(btn.dataset.page); renderPage(); });
+        });
+
+        // 删除用户
+        document.querySelectorAll('.delete-user-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            const id = parseInt(btn.dataset.id);
+            const name = btn.dataset.name;
+            if (confirm(`确定要删除用户 "${name}" 吗？\n\n⚠ 此操作将同时删除该用户的所有记账记录，且不可恢复！`)) {
+              // 删除用户
+              const users = Storage.get('users', []);
+              Storage.set('users', users.filter(u => u.id !== id));
+              // 删除该用户的所有记账记录
+              const transactions = Storage.get('transactions', []);
+              Storage.set('transactions', transactions.filter(t => t.userId !== id));
+              // 删除该用户的预算设置
+              const budgets = Storage.get('budgets', {});
+              if (budgets[id]) {
+                delete budgets[id];
+                Storage.set('budgets', budgets);
+              }
+              Toast.success(`用户 "${name}" 已删除`);
+              loadData();
+              applyFilters();
+              renderPage();
+            }
+          });
+        });
+      }
+
+      // ========== 初始化渲染 ==========
+      loadData();
+      renderPage();
+      document.title = '用户管理 - 记账管家后台';
+    })();
+  </script>
+</body>
+</html>

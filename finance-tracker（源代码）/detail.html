@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>记录详情 - 记账管家</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <div class="main-area" id="mainArea"></div>
+  </div>
+
+  <script src="js/utils/storage.js"></script>
+  <script src="js/utils/toast.js"></script>
+  <script src="js/utils/format.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    App.init(true);
+    App.generateLayout('记录详情', 'list');
+
+    const content = document.getElementById('mainContent');
+    const user = App.getUser();
+    const urlParams = new URLSearchParams(window.location.search);
+    const id = parseInt(urlParams.get('id'));
+
+    if (!id) {
+      Toast.error('缺少记录ID');
+      setTimeout(() => { window.location.href = 'list.html'; }, 500);
+    } else {
+      const transactions = Storage.get('transactions', []);
+      const t = transactions.find(tx => tx.id === id && tx.userId === user.id);
+
+      if (!t) {
+        content.innerHTML = `
+          <div class="empty-state">
+            <div class="empty-icon">🔍</div>
+            <div class="empty-text">记录不存在</div>
+            <a href="list.html" class="btn btn-primary btn-sm">返回列表</a>
+          </div>
+        `;
+      } else {
+        const catIcon = App.getCategoryIcon(t.type, t.category);
+        const catName = App.getCategoryName(t.type, t.category);
+        const typeLabel = t.type === 'income' ? '收入' : '支出';
+        const amountColor = t.type === 'income' ? '#22c55e' : '#ef4444';
+        const amountPrefix = t.type === 'income' ? '+' : '-';
+
+        content.innerHTML = `
+          <div class="page-header">
+            <h1 class="page-title">📄 记录详情</h1>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <a href="add.html?edit=${t.id}" class="btn btn-outline btn-sm">✏️ 编辑</a>
+              <button id="deleteDetailBtn" class="btn btn-outline btn-sm" style="color:var(--danger);">🗑 删除</button>
+            </div>
+          </div>
+
+          <div class="card detail-card">
+            <div style="text-align:center;padding:24px 0;">
+              <div style="font-size:48px;margin-bottom:8px;">${catIcon}</div>
+              <div style="font-size:32px;font-weight:700;color:${amountColor};">
+                ${amountPrefix}${Format.money(t.amount)}
+              </div>
+              <div style="margin-top:4px;">
+                <span class="badge badge-${t.type}">${typeLabel}</span>
+                <span style="color:var(--text-secondary);margin-left:8px;">${catName}</span>
+              </div>
+            </div>
+
+            <div class="detail-field">
+              <div class="detail-label">日期</div>
+              <div class="detail-value">${Format.date(t.date)}</div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-label">分类</div>
+              <div class="detail-value">${catIcon} ${catName}</div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-label">金额</div>
+              <div class="detail-value" style="color:${amountColor};font-weight:600;">${amountPrefix}${Format.money(t.amount)}</div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-label">备注</div>
+              <div class="detail-value">${t.note || '无'}</div>
+            </div>
+            <div class="detail-field">
+              <div class="detail-label">记录时间</div>
+              <div class="detail-value">${Format.date(t.createdAt, true)}</div>
+            </div>
+            ${t.updatedAt ? `
+            <div class="detail-field">
+              <div class="detail-label">修改时间</div>
+              <div class="detail-value">${Format.date(t.updatedAt, true)}</div>
+            </div>
+            ` : ''}
+          </div>
+        `;
+
+        document.getElementById('deleteDetailBtn').addEventListener('click', () => {
+          if (confirm('确定要删除这条记录吗？此操作不可撤销。')) {
+            const all = Storage.get('transactions', []);
+            Storage.set('transactions', all.filter(tx => tx.id !== id));
+            Toast.success('记录已删除');
+            setTimeout(() => { window.location.href = 'list.html'; }, 500);
+          }
+        });
+      }
+    }
+
+    document.title = '记录详情 - 记账管家';
+  </script>
+</body>
+</html>

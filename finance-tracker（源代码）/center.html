@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>个人中心 - 记账管家</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <div class="main-area" id="mainArea"></div>
+  </div>
+
+  <script src="js/utils/storage.js"></script>
+  <script src="js/utils/toast.js"></script>
+  <script src="js/utils/format.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    App.init(true);
+    App.generateLayout('个人中心', 'center');
+
+    const content = document.getElementById('mainContent');
+    const user = App.getUser();
+    const transactions = Storage.get('transactions', []).filter(t => t.userId === user.id);
+    const totalCount = transactions.length;
+    const totalIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const totalExpense = transactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const initial = user.username.charAt(0).toUpperCase();
+
+    content.innerHTML = `
+      <div class="center-header">
+        <div class="center-avatar">${initial}</div>
+        <div class="center-name">${user.username}</div>
+        <div class="center-join">📅 注册于 ${Format.date(user.createdAt)}</div>
+        <div class="center-stats">
+          <div class="center-stat">
+            <div class="cs-value">${totalCount}</div>
+            <div class="cs-label">总记录</div>
+          </div>
+          <div class="center-stat">
+            <div class="cs-value" style="color:#22c55e;">${Format.money(totalIncome)}</div>
+            <div class="cs-label">总收入</div>
+          </div>
+          <div class="center-stat">
+            <div class="cs-value" style="color:#ef4444;">${Format.money(totalExpense)}</div>
+            <div class="cs-label">总支出</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="max-width:480px;margin:0 auto;">
+        <div class="card-header">
+          <span class="card-title">👤 个人信息</span>
+        </div>
+        <form id="profileForm" novalidate>
+          <div class="form-group">
+            <label class="form-label">用户名</label>
+            <input type="text" class="form-input" value="${user.username}" disabled style="opacity:0.6;">
+            <div style="font-size:11px;color:var(--text-muted);margin-top:4px;">用户名不可修改</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="phone">手机号</label>
+            <input type="tel" id="phone" class="form-input" value="${user.phone || ''}" placeholder="请输入手机号">
+            <div class="form-error" id="phoneError"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="newPassword">新密码（留空则不修改）</label>
+            <input type="password" id="newPassword" class="form-input" placeholder="至少6位">
+            <div class="form-error" id="newPasswordError"></div>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">保存修改</button>
+        </form>
+      </div>
+
+      <div style="max-width:480px;margin:24px auto 0;text-align:center;">
+        <a href="index.html" class="btn btn-outline">返回首页</a>
+      </div>
+    `;
+
+    document.getElementById('profileForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const phone = document.getElementById('phone').value.trim();
+      const newPassword = document.getElementById('newPassword').value;
+
+      document.getElementById('phoneError').textContent = '';
+      document.getElementById('newPasswordError').textContent = '';
+
+      let valid = true;
+      if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
+        document.getElementById('phoneError').textContent = '请输入有效的手机号';
+        valid = false;
+      }
+      if (newPassword && newPassword.length < 6) {
+        document.getElementById('newPasswordError').textContent = '新密码至少6位';
+        valid = false;
+      }
+      if (!valid) return;
+
+      const users = Storage.get('users', []);
+      const userIdx = users.findIndex(u => u.id === user.id);
+      if (userIdx !== -1) {
+        users[userIdx].phone = phone;
+        if (newPassword) users[userIdx].password = newPassword;
+        Storage.set('users', users);
+
+        const currentUser = Storage.get('currentUser');
+        currentUser.phone = phone;
+        Storage.set('currentUser', currentUser);
+
+        Toast.success('个人信息已更新');
+        if (newPassword) {
+          Toast.info('密码已修改，下次请使用新密码登录');
+        }
+      }
+    });
+
+    document.title = '个人中心 - 记账管家';
+  </script>
+</body>
+</html>

@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>记一笔 - 记账管家</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <div class="main-area" id="mainArea"></div>
+  </div>
+
+  <script src="js/utils/storage.js"></script>
+  <script src="js/utils/toast.js"></script>
+  <script src="js/utils/format.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    App.init(true);
+    App.generateLayout('记一笔', 'add');
+
+    const content = document.getElementById('mainContent');
+    const user = App.getUser();
+    const urlParams = new URLSearchParams(window.location.search);
+    const defaultType = urlParams.get('type') || 'expense';
+    const editId = urlParams.get('edit');
+    let editingTransaction = null;
+
+    if (editId) {
+      const all = Storage.get('transactions', []);
+      editingTransaction = all.find(t => t.id === parseInt(editId) && t.userId === user.id);
+    }
+
+    function renderCategoryOptions(type, selected) {
+      return App.getCategories(type).map(c =>
+        `<option value="${c.id}" data-icon="${c.icon}" ${c.id === selected ? 'selected' : ''}>${c.icon} ${c.name}</option>`
+      ).join('');
+    }
+
+    const incomeCats = renderCategoryOptions('income', editingTransaction?.type === 'income' ? editingTransaction.category : 'salary');
+    const expenseCats = renderCategoryOptions('expense', editingTransaction?.type === 'expense' ? editingTransaction.category : 'food');
+    const initType = editingTransaction ? editingTransaction.type : defaultType;
+
+    content.innerHTML = `
+      <div class="page-header">
+        <h1 class="page-title">${editingTransaction ? '✏️ 编辑记录' : '✏️ 记一笔'}</h1>
+        <p class="page-desc">${editingTransaction ? '修改收支记录' : '记录你的收入或支出'}</p>
+      </div>
+
+      <div class="card" style="max-width:560px;">
+        <form id="transactionForm" novalidate>
+          <div class="form-group">
+            <label class="form-label">类型</label>
+            <div style="display:flex;gap:12px;">
+              <label style="flex:1;display:flex;align-items:center;gap:8px;padding:12px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;" id="typeIncome">
+                <input type="radio" name="type" value="income" ${initType === 'income' ? 'checked' : ''} style="accent-color:#22c55e;">
+                <span>💰 收入</span>
+              </label>
+              <label style="flex:1;display:flex;align-items:center;gap:8px;padding:12px;border:2px solid var(--border);border-radius:var(--radius);cursor:pointer;" id="typeExpense">
+                <input type="radio" name="type" value="expense" ${initType === 'expense' ? 'checked' : ''} style="accent-color:#ef4444;">
+                <span>💸 支出</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="amount">金额</label>
+            <input type="number" id="amount" class="form-input" placeholder="请输入金额" step="0.01" min="0.01" value="${editingTransaction ? editingTransaction.amount : ''}" required>
+            <div class="form-error" id="amountError"></div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="category">分类</label>
+            <select id="category" class="form-select" required>
+              ${initType === 'income' ? incomeCats : expenseCats}
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="date">日期</label>
+            <input type="date" id="date" class="form-input" value="${editingTransaction ? editingTransaction.date : new Date().toISOString().slice(0,10)}" required>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label" for="note">备注（可选）</label>
+            <input type="text" id="note" class="form-input" placeholder="写个备注..." value="${editingTransaction ? editingTransaction.note || '' : ''}">
+          </div>
+
+          <div style="display:flex;gap:12px;margin-top:24px;">
+            <button type="submit" class="btn btn-primary btn-lg" style="flex:1;">
+              ${editingTransaction ? '保存修改' : '提交记录'}
+            </button>
+            <a href="${editingTransaction ? 'detail.html?id=' + editingTransaction.id : 'list.html'}" class="btn btn-outline btn-lg">取消</a>
+          </div>
+        </form>
+      </div>
+    `;
+
+    function switchCategories(type) {
+      const catSelect = document.getElementById('category');
+      catSelect.innerHTML = type === 'income' ? incomeCats : expenseCats;
+    }
+
+    document.querySelectorAll('input[name="type"]').forEach(radio => {
+      radio.addEventListener('change', () => switchCategories(radio.value));
+    });
+
+    document.getElementById('transactionForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      let valid = true;
+
+      const type = document.querySelector('input[name="type"]:checked').value;
+      const amount = parseFloat(document.getElementById('amount').value);
+      const category = document.getElementById('category').value;
+      const date = document.getElementById('date').value;
+      const note = document.getElementById('note').value.trim();
+
+      document.getElementById('amountError').textContent = '';
+
+      if (!amount || amount <= 0) {
+        document.getElementById('amountError').textContent = '请输入有效的金额';
+        valid = false;
+      }
+
+      if (!valid) return;
+
+      const transactions = Storage.get('transactions', []);
+
+      if (editingTransaction) {
+        const idx = transactions.findIndex(t => t.id === editingTransaction.id);
+        if (idx !== -1) {
+          transactions[idx] = { ...transactions[idx], type, amount, category, date, note, updatedAt: new Date().toISOString() };
+        }
+        Storage.set('transactions', transactions);
+        Toast.success('记录已更新');
+        setTimeout(() => { window.location.href = 'detail.html?id=' + editingTransaction.id; }, 500);
+      } else {
+        const newTransaction = {
+          id: Date.now(),
+          userId: user.id,
+          type,
+          amount,
+          category,
+          date,
+          note,
+          createdAt: new Date().toISOString()
+        };
+        transactions.push(newTransaction);
+        Storage.set('transactions', transactions);
+        Toast.success('记账成功！');
+        setTimeout(() => { window.location.href = 'list.html'; }, 500);
+      }
+    });
+
+    document.title = editingTransaction ? '编辑记录 - 记账管家' : '记一笔 - 记账管家';
+  </script>
+</body>
+</html>

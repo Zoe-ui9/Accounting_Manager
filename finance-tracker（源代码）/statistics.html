@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>统计分析 - 记账管家</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+</head>
+<body>
+  <div class="app-layout">
+    <div class="main-area" id="mainArea"></div>
+  </div>
+
+  <script src="js/utils/storage.js"></script>
+  <script src="js/utils/toast.js"></script>
+  <script src="js/utils/format.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    App.init(true);
+    App.generateLayout('统计分析', 'statistics');
+
+    const content = document.getElementById('mainContent');
+    const user = App.getUser();
+
+    const now = new Date();
+    let viewYear = now.getFullYear();
+    let viewMonth = now.getMonth() + 1;
+
+    function getMonthData(year, month) {
+      const all = Storage.get('transactions', []).filter(t => t.userId === user.id);
+      return all.filter(t => {
+        const d = new Date(t.date);
+        return d.getFullYear() === year && d.getMonth() + 1 === month;
+      });
+    }
+
+    function getYearData(year) {
+      const all = Storage.get('transactions', []).filter(t => t.userId === user.id);
+      return all.filter(t => new Date(t.date).getFullYear() === year);
+    }
+
+    function render() {
+      const monthData = getMonthData(viewYear, viewMonth);
+      const yearData = getYearData(viewYear);
+
+      let monthIncome = 0, monthExpense = 0;
+      const categoryMap = {};
+      monthData.forEach(t => {
+        if (t.type === 'income') monthIncome += t.amount;
+        else monthExpense += t.amount;
+        const key = t.category;
+        if (!categoryMap[key]) categoryMap[key] = { income: 0, expense: 0, type: t.type };
+        categoryMap[key][t.type] += t.amount;
+      });
+
+      const monthLabel = Format.monthLabel(viewYear, viewMonth);
+
+      content.innerHTML = `
+        <div class="page-header flex-between">
+          <div>
+            <h1 class="page-title">📈 统计分析</h1>
+            <p class="page-desc">了解你的收支趋势与结构</p>
+          </div>
+          <div class="month-picker">
+            <button class="month-btn" id="prevMonth">‹</button>
+            <span class="month-label" id="monthLabel">${monthLabel}</span>
+            <button class="month-btn" id="nextMonth">›</button>
+          </div>
+        </div>
+
+        <div class="stat-grid">
+          <div class="stat-card income">
+            <div class="stat-label">${monthLabel} 收入</div>
+            <div class="stat-value">${Format.money(monthIncome)}</div>
+          </div>
+          <div class="stat-card expense">
+            <div class="stat-label">${monthLabel} 支出</div>
+            <div class="stat-value">${Format.money(monthExpense)}</div>
+          </div>
+          <div class="stat-card balance">
+            <div class="stat-label">${monthLabel} 结余</div>
+            <div class="stat-value">${Format.money(monthIncome - monthExpense)}</div>
+          </div>
+        </div>
+
+        <div class="chart-row">
+          <div class="card">
+            <div class="card-title" style="margin-bottom:16px;">📊 支出分类占比</div>
+            <div class="chart-container" id="pieChart"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="margin-bottom:16px;">📋 收支分类明细</div>
+            <div class="chart-container" id="barChart"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:24px;">
+          <div class="card-title" style="margin-bottom:16px;">📅 ${viewYear}年 月度收支趋势</div>
+          <div class="chart-container" id="lineChart"></div>
+        </div>
+      `;
+
+      renderCharts(monthData, yearData);
+      bindEvents();
+    }
+
+    function renderCharts(monthData, yearData) {
+      renderPieChart(monthData);
+      renderBarChart(monthData);
+      renderLineChart(yearData);
+    }
+
+    function renderPieChart(monthData) {
+      const chart = echarts.init(document.getElementById('pieChart'));
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+      const expenseData = monthData.filter(t => t.type === 'expense');
+
+      const categoryAgg = {};
+      expenseData.forEach(t => {
+        const name = App.getCategoryName('expense', t.category);
+        if (!categoryAgg[name]) categoryAgg[name] = 0;
+        categoryAgg[name] += t.amount;
+      });
+
+      const data = Object.entries(categoryAgg).map(([name, value]) => ({ name, value }));
+      const colors = ['#ef4444','#f97316','#f59e0b','#e11d48','#dc2626','#a855f7','#6366f1','#ec4899','#14b8a6','#d946ef','#f43f5e','#eab308','#06b6d4','#8b5cf6','#6b7280'];
+
+      chart.setOption({
+        tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+        legend: { orient: 'vertical', right: 10, top: 'center', textStyle: { color: isDark ? '#94a3b8' : '#6b7280', fontSize: 12 } },
+        series: [{
+          type: 'pie',
+          radius: ['45%', '75%'],
+          center: ['40%', '50%'],
+          avoidLabelOverlap: false,
+          itemStyle: { borderRadius: 6, borderColor: isDark ? '#1e293b' : '#fff', borderWidth: 2 },
+          label: { show: false },
+          emphasis: { label: { show: true, fontSize: 14, fontWeight: 'bold' } },
+          data: data.length > 0 ? data : [{ name: '暂无数据', value: 1, itemStyle: { color: '#e5e7eb' } }],
+          color: colors
+        }]
+      });
+
+      window.addEventListener('resize', () => chart.resize());
+    }
+
+    function renderBarChart(monthData) {
+      const chart = echarts.init(document.getElementById('barChart'));
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+      const incomeByCat = {}, expenseByCat = {};
+      monthData.forEach(t => {
+        const name = App.getCategoryName(t.type, t.category);
+        if (t.type === 'income') {
+          incomeByCat[name] = (incomeByCat[name] || 0) + t.amount;
+        } else {
+          expenseByCat[name] = (expenseByCat[name] || 0) + t.amount;
+        }
+      });
+
+      const categories = [...new Set([...Object.keys(incomeByCat), ...Object.keys(expenseByCat)])];
+      if (categories.length === 0) categories.push('暂无数据');
+
+      chart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: {
+          data: ['收入', '支出'],
+          textStyle: { color: isDark ? '#94a3b8' : '#6b7280' }
+        },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: categories,
+          axisLabel: { rotate: 30, fontSize: 11, color: isDark ? '#94a3b8' : '#6b7280' }
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: { formatter: '¥{value}', color: isDark ? '#94a3b8' : '#6b7280' }
+        },
+        series: [
+          {
+            name: '收入', type: 'bar', data: categories.map(c => incomeByCat[c] || 0),
+            itemStyle: { color: '#22c55e', borderRadius: [4, 4, 0, 0] }
+          },
+          {
+            name: '支出', type: 'bar', data: categories.map(c => expenseByCat[c] || 0),
+            itemStyle: { color: '#ef4444', borderRadius: [4, 4, 0, 0] }
+          }
+        ]
+      });
+
+      window.addEventListener('resize', () => chart.resize());
+    }
+
+    function renderLineChart(yearData) {
+      const chart = echarts.init(document.getElementById('lineChart'));
+      const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+
+      const months = ['01','02','03','04','05','06','07','08','09','10','11','12'];
+      const incomeByMonth = Array(12).fill(0);
+      const expenseByMonth = Array(12).fill(0);
+
+      yearData.forEach(t => {
+        const m = new Date(t.date).getMonth();
+        if (t.type === 'income') incomeByMonth[m] += t.amount;
+        else expenseByMonth[m] += t.amount;
+      });
+
+      chart.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: {
+          data: ['收入', '支出', '结余'],
+          textStyle: { color: isDark ? '#94a3b8' : '#6b7280' }
+        },
+        grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: months.map(m => m + '月'),
+          axisLabel: { color: isDark ? '#94a3b8' : '#6b7280' }
+        },
+        yAxis: {
+          type: 'value',
+          axisLabel: { formatter: '¥{value}', color: isDark ? '#94a3b8' : '#6b7280' }
+        },
+        series: [
+          {
+            name: '收入', type: 'line', data: incomeByMonth, smooth: true,
+            itemStyle: { color: '#22c55e' }, lineStyle: { width: 2 }
+          },
+          {
+            name: '支出', type: 'line', data: expenseByMonth, smooth: true,
+            itemStyle: { color: '#ef4444' }, lineStyle: { width: 2 }
+          },
+          {
+            name: '结余', type: 'line', data: incomeByMonth.map((v, i) => v - expenseByMonth[i]), smooth: true,
+            itemStyle: { color: '#3b82f6' }, lineStyle: { width: 2 }
+          }
+        ]
+      });
+
+      window.addEventListener('resize', () => chart.resize());
+    }
+
+    function bindEvents() {
+      document.getElementById('prevMonth').addEventListener('click', () => {
+        viewMonth--;
+        if (viewMonth < 1) { viewMonth = 12; viewYear--; }
+        document.getElementById('monthLabel').textContent = Format.monthLabel(viewYear, viewMonth);
+        render();
+      });
+      document.getElementById('nextMonth').addEventListener('click', () => {
+        viewMonth++;
+        if (viewMonth > 12) { viewMonth = 1; viewYear++; }
+        document.getElementById('monthLabel').textContent = Format.monthLabel(viewYear, viewMonth);
+        render();
+      });
+    }
+
+    render();
+    document.title = '统计分析 - 记账管家';
+  </script>
+</body>
+</html>

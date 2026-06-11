@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>收支明细 - 记账管家</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="app-layout">
+    <div class="main-area" id="mainArea"></div>
+  </div>
+
+  <script src="js/utils/storage.js"></script>
+  <script src="js/utils/toast.js"></script>
+  <script src="js/utils/format.js"></script>
+  <script src="js/main.js"></script>
+  <script>
+    App.init(true);
+    App.generateLayout('收支明细', 'list');
+
+    const content = document.getElementById('mainContent');
+    const user = App.getUser();
+    let allTransactions = [];
+    let filteredTransactions = [];
+    let currentPage = 1;
+    const PAGE_SIZE = 10;
+
+    function loadData() {
+      allTransactions = Storage.get('transactions', []).filter(t => t.userId === user.id);
+      allTransactions.sort((a, b) => new Date(b.date) - new Date(a.date));
+      filteredTransactions = [...allTransactions];
+    }
+
+    function render() {
+      loadData();
+      applyFilters();
+      renderPage();
+    }
+
+    function applyFilters() {
+      const typeFilter = document.getElementById('filterType')?.value || '';
+      const categoryFilter = document.getElementById('filterCategory')?.value || '';
+      const keyword = document.getElementById('searchInput')?.value?.trim().toLowerCase() || '';
+      const dateFrom = document.getElementById('filterDateFrom')?.value || '';
+      const dateTo = document.getElementById('filterDateTo')?.value || '';
+
+      filteredTransactions = allTransactions.filter(t => {
+        if (typeFilter && t.type !== typeFilter) return false;
+        if (categoryFilter && t.category !== categoryFilter) return false;
+        if (keyword) {
+          const catName = App.getCategoryName(t.type, t.category).toLowerCase();
+          if (!catName.includes(keyword) && !(t.note && t.note.toLowerCase().includes(keyword))) return false;
+        }
+        if (dateFrom && t.date < dateFrom) return false;
+        if (dateTo && t.date > dateTo) return false;
+        return true;
+      });
+      currentPage = 1;
+    }
+
+    function renderPage() {
+      const totalPages = Math.ceil(filteredTransactions.length / PAGE_SIZE) || 1;
+      const start = (currentPage - 1) * PAGE_SIZE;
+      const pageData = filteredTransactions.slice(start, start + PAGE_SIZE);
+
+      const monthTotalIncome = filteredTransactions.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+      const monthTotalExpense = filteredTransactions.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+
+      content.innerHTML = `
+        <div class="page-header">
+          <h1 class="page-title">📋 收支明细</h1>
+          <p class="page-desc">共 ${filteredTransactions.length} 条记录 | 收入 ${Format.money(monthTotalIncome)} | 支出 ${Format.money(monthTotalExpense)}</p>
+        </div>
+
+        <div class="card" style="margin-bottom:20px;">
+          <div class="list-toolbar">
+            <div class="search-box">
+              <span class="search-icon">🔍</span>
+              <input type="text" class="form-input" id="searchInput" placeholder="搜索分类或备注...">
+            </div>
+            <select class="form-select" id="filterType">
+              <option value="">全部类型</option>
+              <option value="income">收入</option>
+              <option value="expense">支出</option>
+            </select>
+            <select class="form-select" id="filterCategory">
+              <option value="">全部分类</option>
+            </select>
+            <input type="date" class="form-input" id="filterDateFrom" placeholder="开始日期">
+            <input type="date" class="form-input" id="filterDateTo" placeholder="结束日期">
+            <button class="btn btn-outline btn-sm" id="resetFilter">重置</button>
+            <a href="add.html" class="btn btn-primary btn-sm">+ 记一笔</a>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="table-responsive">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>日期</th>
+                  <th>类型</th>
+                  <th>分类</th>
+                  <th>金额</th>
+                  <th>备注</th>
+                  <th>操作</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${pageData.length === 0 ? `
+                  <tr><td colspan="6">
+                    <div class="empty-state">
+                      <div class="empty-icon">📭</div>
+                      <div class="empty-text">暂无记录</div>
+                    </div>
+                  </td></tr>
+                ` : pageData.map(t => `
+                  <tr>
+                    <td>${Format.date(t.date)}</td>
+                    <td><span class="badge badge-${t.type}">${t.type === 'income' ? '收入' : '支出'}</span></td>
+                    <td>${App.getCategoryIcon(t.type, t.category)} ${App.getCategoryName(t.type, t.category)}</td>
+                    <td style="color:${t.type === 'income' ? '#22c55e' : '#ef4444'};font-weight:600;">
+                      ${t.type === 'income' ? '+' : '-'}${Format.money(t.amount)}
+                    </td>
+                    <td>${t.note || '-'}</td>
+                    <td>
+                      <div class="row-actions">
+                        <a href="detail.html?id=${t.id}" class="btn btn-outline btn-sm">详情</a>
+                        <button class="btn btn-outline btn-sm delete-btn" data-id="${t.id}" style="color:var(--danger);">删除</button>
+                      </div>
+                    </td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>
+          ${totalPages > 1 ? `
+            <div class="pagination">
+              <button class="page-btn" id="prevPage" ${currentPage === 1 ? 'disabled' : ''}>‹</button>
+              ${Array.from({length: totalPages}, (_, i) => `
+                <button class="page-btn ${i + 1 === currentPage ? 'active' : ''}" data-page="${i + 1}">${i + 1}</button>
+              `).join('')}
+              <button class="page-btn" id="nextPage" ${currentPage === totalPages ? 'disabled' : ''}>›</button>
+            </div>
+          ` : ''}
+        </div>
+      `;
+
+      bindEvents();
+      updateCategoryFilter();
+    }
+
+    function updateCategoryFilter() {
+      const typeFilter = document.getElementById('filterType')?.value || '';
+      const catSelect = document.getElementById('filterCategory');
+      if (!catSelect) return;
+
+      let options = '<option value="">全部分类</option>';
+      if (typeFilter) {
+        App.getCategories(typeFilter).forEach(c => {
+          options += `<option value="${c.id}">${c.icon} ${c.name}</option>`;
+        });
+      } else {
+        App.getCategories('income').forEach(c => {
+          options += `<option value="${c.id}">💰 ${c.name}</option>`;
+        });
+        App.getCategories('expense').forEach(c => {
+          options += `<option value="${c.id}">💸 ${c.name}</option>`;
+        });
+      }
+      catSelect.innerHTML = options;
+    }
+
+    function bindEvents() {
+      document.getElementById('searchInput')?.addEventListener('input', () => { applyFilters(); renderPage(); });
+      document.getElementById('filterType')?.addEventListener('change', () => { updateCategoryFilter(); applyFilters(); renderPage(); });
+      document.getElementById('filterCategory')?.addEventListener('change', () => { applyFilters(); renderPage(); });
+      document.getElementById('filterDateFrom')?.addEventListener('change', () => { applyFilters(); renderPage(); });
+      document.getElementById('filterDateTo')?.addEventListener('change', () => { applyFilters(); renderPage(); });
+      document.getElementById('resetFilter')?.addEventListener('click', () => {
+        document.getElementById('searchInput').value = '';
+        document.getElementById('filterType').value = '';
+        document.getElementById('filterCategory').value = '';
+        document.getElementById('filterDateFrom').value = '';
+        document.getElementById('filterDateTo').value = '';
+        updateCategoryFilter();
+        applyFilters();
+        renderPage();
+      });
+
+      document.getElementById('prevPage')?.addEventListener('click', () => {
+        if (currentPage > 1) { currentPage--; renderPage(); }
+      });
+      document.getElementById('nextPage')?.addEventListener('click', () => {
+        const totalPages = Math.ceil(filteredTransactions.length / PAGE_SIZE) || 1;
+        if (currentPage < totalPages) { currentPage++; renderPage(); }
+      });
+      document.querySelectorAll('.page-btn[data-page]').forEach(btn => {
+        btn.addEventListener('click', () => { currentPage = parseInt(btn.dataset.page); renderPage(); });
+      });
+
+      document.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const id = parseInt(btn.dataset.id);
+          if (confirm('确定要删除这条记录吗？')) {
+            const all = Storage.get('transactions', []);
+            Storage.set('transactions', all.filter(t => t.id !== id));
+            Toast.success('已删除');
+            render();
+          }
+        });
+      });
+    }
+
+    render();
+    document.title = '收支明细 - 记账管家';
+  </script>
+</body>
+</html>
